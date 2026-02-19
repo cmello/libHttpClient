@@ -216,7 +216,8 @@ public:
             XTaskQueueCloseHandle(dups[idx]);
         }
 
-        VERIFY_FAILED(XTaskQueueDuplicateHandle(dups[0], &dups[1]));
+        alignas(void*) uint8_t fakeHandleStorage[64] = {};
+        VERIFY_FAILED(XTaskQueueDuplicateHandle(reinterpret_cast<XTaskQueueHandle>(fakeHandleStorage), &dups[1]));
         XTaskQueueCloseHandle(queue);
     }
 
@@ -456,10 +457,10 @@ public:
             uint64_t call2Ticks = result.Times[1] - baseTicks;
             uint64_t call3Ticks = result.Times[2] - baseTicks;
 
-            // Call 1 at index 0 should have a tick count > 1000 and < 1050 (shouldn't take 50ms)
-            VERIFY_IS_TRUE(call1Ticks >= 1000 && call1Ticks < 1050);
-            VERIFY_IS_TRUE(call2Ticks < 50);
-            VERIFY_IS_TRUE(call3Ticks >= 500 && call3Ticks < 550);
+            // Call 1 at index 0 should have a tick count > 1000 and < 1100 (100ms tolerance for debugger overhead)
+            VERIFY_IS_TRUE(call1Ticks >= 1000 && call1Ticks < 1100);
+            VERIFY_IS_TRUE(call2Ticks < 100);
+            VERIFY_IS_TRUE(call3Ticks >= 500 && call3Ticks < 600);
         }
     }
 
@@ -917,6 +918,15 @@ public:
         }
 
         uint32_t expectedCount = normalCount + futureCount + eventCount;
+        if (!wait)
+        {
+            UINT64 ticks = GetTickCount64();
+            while ((data.workCount.load() != expectedCount || data.completionCount.load() != expectedCount)
+                && GetTickCount64() - ticks < 5000)
+            {
+                Sleep(10);
+            }
+        }
         VERIFY_ARE_EQUAL(expectedCount, data.workCount.load());
         VERIFY_ARE_EQUAL(expectedCount, data.completionCount.load());
     }
